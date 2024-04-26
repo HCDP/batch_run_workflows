@@ -2,8 +2,10 @@
 
 # The data to execute with will be formatted in JSON, like so:
 # {
-#   "containers": []"ghcr.io/hcdp/preliminary-rainfall-monthly:latest"],
-#   "env": "/path/to/env_file.env",
+#   "run_data": [{
+#       "container": "ghcr.io/hcdp/preliminary-rainfall-monthly:latest",
+#       "env": "/path/to/env_file.env"
+#   }],
 #   "dates": [
 #     "2023-01-01",
 #     "2023-01-02",
@@ -35,8 +37,10 @@ def generate_dates(start_date, end_date, delta, date_format):
         yield current_date.strftime(date_format)
         current_date += timedelta(**delta)
 
-def run_containers(date, containers, env, dry_run, container_ids, max_containers):
-    for container in containers:
+def run_containers(date, run_data, dry_run, container_ids, max_containers):
+    for data in run_data:
+        container = data["container"]
+        env = data["env"]
         print(f'Running container {container} with CUSTOM_DATE={date} and base env file {base_env} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
         if not args.dry_run:
             container_name = f"batch_{date}_{time_ns()}"
@@ -58,8 +62,7 @@ def main():
     with open(args.data) as f:
         data = json.load(f)
 
-    containers = data['containers']
-    env = data['env']
+    run_data = data['run_data']
     dates = data.get('dates', [])
     date_ranges = data.get('date_ranges', [])
     delta = data.get("delta", {
@@ -71,12 +74,12 @@ def main():
     container_ids = []
 
     for date in dates:
-        run_containers(date, containers, env, args.dry_run, container_ids, max_containers)
+        run_containers(date, run_data, args.dry_run, container_ids, max_containers)
 
     for date_range in date_ranges:
         start_date, end_date = parse_date_range(date_range)
         for date in generate_dates(start_date, end_date, delta, date_format):
-            run_containers(date, containers, env, args.dry_run, container_ids, max_containers)
+            run_containers(date, run_data, args.dry_run, container_ids, max_containers)
 
 if __name__ == '__main__':
     main()
