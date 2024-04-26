@@ -41,7 +41,7 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
     for data in run_data:
         container = data["container"]
         env = data["env"]
-        print(f'Running container {container} with CUSTOM_DATE={date} and base env file {base_env} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        print(f'Running container {container} with CUSTOM_DATE={date} and base env file {env} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
         if not args.dry_run:
             container_name = f"batch_{date}_{time_ns()}"
             subprocess.run(['docker', 'run', '-d', f'--name={container_name}', f'--env-file={env}', '-e', f'CUSTOM_DATE={date}', container], check=True, stderr=subprocess.STDOUT)
