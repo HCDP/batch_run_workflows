@@ -40,11 +40,21 @@ def generate_dates(start_date, end_date, delta, date_format):
 def run_containers(date, run_data, dry_run, container_ids, max_containers):
     for data in run_data:
         container = data["container"]
-        env = data["env"]
+        env_data = []
+        envs = data["envs"]
+        variable_envs = envs.get("variables")
+        file_envs = envs.get("files")
+        if variable_envs is not None:
+            for variable in variable_envs:
+                env_data += ["-e", f"{variable}={variable_envs[variable]}"]
+        if file_envs is not None:
+            for file in file_envs:
+                env_data.append(f"--env-file={file}")
         print(f'Running container {container} with CUSTOM_DATE={date} and base env file {env} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
         if not dry_run:
             container_name = f"batch_{date}_{time_ns()}"
-            subprocess.run(['docker', 'run', '-d', f'--name={container_name}', f'--env-file={env}', '-e', f'CUSTOM_DATE={date}', container], check=True, stderr=subprocess.STDOUT)
+            args = ['docker', 'run', '-d', f'--name={container_name}', '-e', f'CUSTOM_DATE={date}'] + env_data + [container]
+            subprocess.run(args, check=True, stderr=subprocess.STDOUT)
             subprocess.run(['docker', 'wait', container_name], check=True, stderr=subprocess.STDOUT)
 
             container_ids.append(container_name)
