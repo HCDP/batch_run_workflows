@@ -50,7 +50,7 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
         if file_envs is not None:
             for file in file_envs:
                 env_data.append(f"--env-file={file}")
-        print(f'Running container {container} with CUSTOM_DATE={date} and base env file {env} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        print(f'Running container {container} with CUSTOM_DATE={date} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
         if not dry_run:
             container_name = f"batch_{date}_{time_ns()}"
             args = ['docker', 'run', '-d', f'--name={container_name}', '-e', f'CUSTOM_DATE={date}'] + env_data + [container]
@@ -65,7 +65,7 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
 
 def main():
     parser = argparse.ArgumentParser(description='Run a container repeatedly with the given list of CUSTOM_DATE env vars.')
-    parser.add_argument('data', help='JSON file specifying the container, base env file, and dates to run with')
+    parser.add_argument('data', help='JSON file specifying the containers, env data, and dates to run with')
     parser.add_argument('-d', '--dry-run', action='store_true', help='Do not run the container, just print the commands that would be run')
     args = parser.parse_args()
 
