@@ -2,19 +2,26 @@
 
 # The data to execute with will be formatted in JSON, like so:
 # {
-#   "run_data": [{
-#       "container": "ghcr.io/hcdp/preliminary-rainfall-monthly:latest",
-#       "env": "/path/to/env_file.env"
-#   }],
-#   "dates": [
-#     "2023-01-01",
-#     "2023-01-02",
-#     "2023-01-03"
-#   ],
-#   "date_ranges": [
-#     "2023-01-01_2023-01-05",
-#     "2023-01-06_2023-01-10"
-#   ]
+#     "run_data": [
+#         {
+#             "container": "ghcr.io/hcdp/task-preliminary-rainfall-daily:latest",
+#             "envs": {
+#                 "files": ["/home/exouser/container_envs/aggregation/aggregation.env"]
+#             }
+#         },
+#         {
+#             "container": "ghcr.io/hcdp/task-ingest-values:latest",
+#             "envs": {
+#                 "variables": {
+#                     "INGESTION_CONFIG_URL": "https://raw.githubusercontent.com/hcdp/preliminary_rainfall/main/containers/daily/configs/ingestion.json"
+#                 },
+#                 "files": ["/home/exouser/container_envs/ingestion/ingestion.env"]
+#             }
+#         }
+#     ],
+#     "date_ranges": [
+#         "2024-07-15_2024-07-16"
+#     ]
 # }
 
 # The script will run the container for each date, in series.
@@ -54,6 +61,7 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
         if not dry_run:
             container_name = f"batch_{date}_{time_ns()}"
             args = ['docker', 'run', '-d', f'--name={container_name}', '-e', f'CUSTOM_DATE={date}'] + env_data + [container]
+            print(args)
             subprocess.run(args, check=True, stderr=subprocess.STDOUT)
             subprocess.run(['docker', 'wait', container_name], check=True, stderr=subprocess.STDOUT)
 
