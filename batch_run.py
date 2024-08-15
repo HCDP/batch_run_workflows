@@ -29,7 +29,8 @@
 import argparse
 import json
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 from time import time_ns
 from math import inf
 
@@ -42,7 +43,7 @@ def generate_dates(start_date, end_date, delta, date_format):
     end_date = datetime.strptime(end_date, date_format)
     while current_date <= end_date:
         yield current_date.strftime(date_format)
-        current_date += timedelta(**delta)
+        current_date += relativedelta(**delta)
 
 def run_containers(date, run_data, dry_run, container_ids, max_containers):
     for data in run_data:
