@@ -52,6 +52,10 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
         envs = data["envs"]
         variable_envs = envs.get("variables")
         file_envs = envs.get("files")
+        mounts = envs.get("mounts")
+        if mounts is not None:
+            for src, dst in mounts:
+                env_data += ["-v", f"{src}:{dst}"]
         if variable_envs is not None:
             for variable in variable_envs:
                 env_data += ["-e", f"{variable}={variable_envs[variable]}"]
