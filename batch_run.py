@@ -46,6 +46,73 @@ from functools import partial
 
 id_lock = Lock()
 
+def partition_dates(dates: list[str], partition_by: str, date_format: str = "%Y-%m-%d") -> list[list[str]]:
+    partitions = defaultdict(list)
+    
+    for date_str in dates:
+        dt = datetime.strptime(date_str, date_format)
+        
+        if partition_by == "year":
+            key = dt.year
+        elif partition_by == "month":
+            key = (dt.year, dt.month)
+        else:
+            key = date_str
+            
+        partitions[key].append(date_str)
+        
+    # Return sorted by time keys
+    return [partitions[k] for k in sorted(partitions.keys())]
+
+
+def partition_date_ranges(date_ranges: list[str], partition_by: str, date_format: str = "%Y-%m-%d") -> list[list[tuple[str, str]]]:
+    partitions = defaultdict(list)
+    
+    for date_range in date_ranges:
+        start_str, end_str = parse_date_range(date_range)
+        start_dt = datetime.strptime(start_str, date_format)
+        end_dt = datetime.strptime(end_str, date_format)
+        
+        current_start = start_dt
+        
+        while current_start <= end_dt:
+            # Determine the natural end boundary for the current partition
+            if partition_by == "year":
+                key = current_start.year
+                # End of the current year
+                partition_end = datetime(current_start.year, 12, 31)
+            elif partition_by == "month":
+                key = (current_start.year, current_start.month)
+                # End of the current month
+                partition_end = current_start + relativedelta(day=31)
+            else:
+                key = current_start
+                partition_end = end_dt
+                
+            # The actual end date is either the end of the partition, or the end of the total range (whichever is earlier)
+            actual_end = min(partition_end, end_dt)
+            
+            partitions[key].append(
+                (current_start.strftime(date_format), actual_end.strftime(date_format))
+            )
+            
+            # Step forward to the first day of the next partition
+            current_start = actual_end + relativedelta(days=1)
+            
+    # Return sorted by time keys
+    return [partitions[k] for k in sorted(partitions.keys())]
+    
+    
+def handle_dates(dates: list[str], run_data: Any, dry_run: bool, container_ids: list[str], max_containers: int):
+    for date in dates:
+        run_containers(date, run_data, dry_run, container_ids, max_containers)
+
+def handle_date_ranges(date_ranges: list[tuple[str, str]], run_data: Any, delta: Any, date_format: str, dry_run: bool, container_ids: list[str], max_containers: int):
+    for start_date, end_date in date_ranges:
+        for date in generate_dates(start_date, end_date, delta, date_format):
+            run_containers(date, run_data, dry_run, container_ids, max_containers)
+
+
 def parse_date_range(date_range) -> tuple[str, str]:
     start_date, end_date = date_range.split('_')
     return start_date, end_date
@@ -139,71 +206,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
-    
-    
-def partition_dates(dates: list[str], partition_by: str, date_format: str = "%Y-%m-%d") -> list[list[str]]:
-    partitions = defaultdict(list)
-    
-    for date_str in dates:
-        dt = datetime.strptime(date_str, date_format)
-        
-        if partition_by == "year":
-            key = dt.year
-        elif partition_by == "month":
-            key = (dt.year, dt.month)
-        else:
-            key = date_str
-            
-        partitions[key].append(date_str)
-        
-    # Return sorted by time keys
-    return [partitions[k] for k in sorted(partitions.keys())]
-
-
-def partition_date_ranges(date_ranges: list[str], partition_by: str, date_format: str = "%Y-%m-%d") -> list[list[tuple[str, str]]]:
-    partitions = defaultdict(list)
-    
-    for date_range in date_ranges:
-        start_str, end_str = parse_date_range(date_range)
-        start_dt = datetime.strptime(start_str, date_format)
-        end_dt = datetime.strptime(end_str, date_format)
-        
-        current_start = start_dt
-        
-        while current_start <= end_dt:
-            # Determine the natural end boundary for the current partition
-            if partition_by == "year":
-                key = current_start.year
-                # End of the current year
-                partition_end = datetime(current_start.year, 12, 31)
-            elif partition_by == "month":
-                key = (current_start.year, current_start.month)
-                # End of the current month
-                partition_end = current_start + relativedelta(day=31)
-            else:
-                key = current_start
-                partition_end = end_dt
-                
-            # The actual end date is either the end of the partition, or the end of the total range (whichever is earlier)
-            actual_end = min(partition_end, end_dt)
-            
-            partitions[key].append(
-                (current_start.strftime(date_format), actual_end.strftime(date_format))
-            )
-            
-            # Step forward to the first day of the next partition
-            current_start = actual_end + relativedelta(days=1)
-            
-    # Return sorted by time keys
-    return [partitions[k] for k in sorted(partitions.keys())]
-    
-    
-def handle_dates(dates: list[str], run_data: Any, dry_run: bool, container_ids: list[str], max_containers: int):
-    for date in dates:
-        run_containers(date, run_data, dry_run, container_ids, max_containers)
-
-def handle_date_ranges(date_ranges: list[tuple[str, str]], run_data: Any, delta: Any, date_format: str, dry_run: bool, container_ids: list[str], max_containers: int):
-    for start_date, end_date in date_ranges:
-        for date in generate_dates(start_date, end_date, delta, date_format):
-            run_containers(date, run_data, dry_run, container_ids, max_containers)
