@@ -134,7 +134,7 @@ def generate_dates(start_date, end_date, delta, date_format):
 
 def run_containers(date, run_data, dry_run, container_ids, max_containers):
     for data in run_data:
-        container = str(data["container"])
+        container_image = data["container"]
         envs = data.get("envs", {})
         variable_envs = envs.get("variables", {})
         file_envs = envs.get("files", [])
@@ -150,19 +150,19 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
         for file in file_envs:
             environment.update(parse_env_file(file))
 
-        # Thread-safe check to see if we've already pulled this container
+        # Thread-safe check to see if we've already pulled this container image
         with pull_lock:
-            needs_pull = container not in pulled_images
+            needs_pull = container_image not in pulled_images
             if needs_pull and not dry_run:
-                pulled_images.add(container)
+                pulled_images.add(container_image)
         
         if needs_pull and not dry_run:
-            logging.info(f'Pulling updates for {container} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+            logging.info(f'Pulling updates for {container_image} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
             try:
-                repo, tag = parse_repository_tag(container)
+                repo, tag = parse_repository_tag(container_image)
                 docker_client.images.pull(repo, tag = tag or "latest")
             except APIError as e:
-                logging.info(f"Warning: Failed to pull image {container}, will attempt to run with cache if present. Error: {e}")
+                logging.info(f"Warning: Failed to pull image {container_image}, will attempt to run with cache if present. Error: {e}")
 
         
         if not dry_run:
@@ -177,7 +177,7 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
             
             try:
                 container = docker_client.containers.run(container, **run_kwargs)
-                logging.info(f'Running container {container} with CUSTOM_DATE={date} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n{container.id}')
+                logging.info(f'Running container {container_image} with CUSTOM_DATE={date} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n{container.id}')
                 result = container.wait()
                 exit_code = result.get("StatusCode")
                 logging.info(f"Container {container.id} finished with exit code {exit_code}")
@@ -197,7 +197,7 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
                     except APIError as e:
                         logging.info(f"Failed to remove container {removed_name}: {e}")
     else:
-        logging.info(f'Running container {container} with CUSTOM_DATE={date} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        logging.info(f'Running container {container_image} with CUSTOM_DATE={date} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
 def main():
     parser = argparse.ArgumentParser(description='Run a container repeatedly with the given list of CUSTOM_DATE env vars.')
