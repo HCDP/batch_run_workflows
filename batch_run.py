@@ -31,7 +31,8 @@
 
 import argparse
 import json
-import subprocess
+import docker
+from docker.errors import APIError, ContainerError
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from time import time_ns
@@ -41,10 +42,15 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from threading import Lock
 from collections import defaultdict
-from datetime import datetime
 from functools import partial
+import logging
+
+logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
 id_lock = Lock()
+pull_lock = Lock()
+pulled_images: set[str] = set()
+docker_client = docker.from_env()
 
 def partition_dates(dates: list[str], partition_by: str, date_format: str = "%Y-%m-%d") -> list[list[str]]:
     partitions = defaultdict(list)
@@ -123,37 +129,78 @@ def generate_dates(start_date, end_date, delta, date_format):
     while current_date <= end_date:
         yield current_date.strftime(date_format)
         current_date += relativedelta(**delta)
+        
 
 def run_containers(date, run_data, dry_run, container_ids, max_containers):
     for data in run_data:
-        container = data["container"]
-        env_data = []
-        envs = data["envs"]
-        variable_envs = envs.get("variables")
-        file_envs = envs.get("files")
-        mounts = data.get("mounts")
-        if mounts is not None:
-            for src, dst in mounts:
-                env_data += ["-v", f"{src}:{dst}"]
-        if variable_envs is not None:
-            for variable in variable_envs:
-                env_data += ["-e", f"{variable}={variable_envs[variable]}"]
-        if file_envs is not None:
-            for file in file_envs:
-                env_data.append(f"--env-file={file}")
-        print(f'Running container {container} with CUSTOM_DATE={date} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        container = str(data["container"])
+        envs = data.get("envs", {})
+        variable_envs = envs.get("variables", {})
+        file_envs = envs.get("files", [])
+        mounts = data.get("mounts", [])
+        
+        # Format Volumes
+        volumes = [f"{src}:{dst}" for src, dst in mounts]
+        
+        # Build Environment Dictionary
+        environment = {"CUSTOM_DATE": date}
+        if variable_envs:
+            environment.update(variable_envs)
+
+        # Thread-safe check to see if we've already pulled this container
+        with pull_lock:
+            needs_pull = container not in pulled_images
+            if needs_pull and not dry_run:
+                pulled_images.add(container)
+        
+        if needs_pull and not dry_run:
+            logging.info(f'Pulling updates for {container} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+            try:
+                # Docker API expects repository and tag split for pulling specific versions properly
+                if ':' in container:
+                    repo, tag = container.rsplit(':', 1)
+                    docker_client.images.pull(repo, tag=tag)
+                else:
+                    docker_client.images.pull(container)
+            except APIError as e:
+                logging.info(f"Warning: Failed to pull image {container}, will attempt to run with cache if present. Error: {e}")
+
+        
         if not dry_run:
             container_name = f"batch_{date}_{time_ns()}"
-            args = ['docker', 'run', '-d', f'--name={container_name}', '-e', f'CUSTOM_DATE={date}'] + env_data + [container]
-            subprocess.run(args, check=True, stderr=subprocess.STDOUT)
-            subprocess.run(['docker', 'wait', container_name], check=True, stderr=subprocess.STDOUT)
+            
+            run_kwargs: dict[str, Any] = {
+                "detach": True,
+                "name": container_name,
+                "environment": environment,
+                "volumes": volumes
+            }
+            if file_envs:
+                run_kwargs["env_file"] = file_envs
+            
+            try:
+                container = docker_client.containers.run(container, **run_kwargs)
+                logging.info(f'Running container {container} with CUSTOM_DATE={date} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n{container.id}')
+                result = container.wait()
+                exit_code = result.get("StatusCode")
+                logging.info(f"Container {container.id} finished with exit code {exit_code}")
+            except ContainerError as e:
+                logging.info(f"Container failed to run: {e}")
+            except Exception as e:
+                logging.info(f"Unexpected error running {container}: {e}")
 
             with id_lock:
                 container_ids.append(container_name)
                 #remove the oldest container if over the max allowed number of containers have been executed
-                if(len(container_ids) > max_containers):
+                if len(container_ids) > max_containers:
                     removed_name = container_ids.pop(0)
-                    subprocess.run(['docker', 'rm', removed_name], check=True, stderr=subprocess.STDOUT)
+                    try:
+                        c_rm = docker_client.containers.get(removed_name)
+                        c_rm.remove()
+                    except APIError as e:
+                        logging.info(f"Failed to remove container {removed_name}: {e}")
+    else:
+        logging.info(f'Running container {container} with CUSTOM_DATE={date} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
 def main():
     parser = argparse.ArgumentParser(description='Run a container repeatedly with the given list of CUSTOM_DATE env vars.')
