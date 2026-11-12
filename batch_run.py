@@ -44,6 +44,7 @@ from threading import Lock
 from collections import defaultdict
 from functools import partial
 import logging
+from docker.utils import parse_env_file, parse_repository_tag
 
 logging.basicConfig(level = logging.INFO, format = "%(message)s")
 
@@ -146,6 +147,8 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
         environment = {"CUSTOM_DATE": date}
         if variable_envs:
             environment.update(variable_envs)
+        for file in file_envs:
+            environment.update(parse_env_file(file))
 
         # Thread-safe check to see if we've already pulled this container
         with pull_lock:
@@ -156,12 +159,8 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
         if needs_pull and not dry_run:
             logging.info(f'Pulling updates for {container} at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
             try:
-                # Docker API expects repository and tag split for pulling specific versions properly
-                if ':' in container:
-                    repo, tag = container.rsplit(':', 1)
-                    docker_client.images.pull(repo, tag=tag)
-                else:
-                    docker_client.images.pull(container)
+                repo, tag = parse_repository_tag(container)
+                docker_client.images.pull(repo, tag = tag or "latest")
             except APIError as e:
                 logging.info(f"Warning: Failed to pull image {container}, will attempt to run with cache if present. Error: {e}")
 
@@ -175,8 +174,6 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
                 "environment": environment,
                 "volumes": volumes
             }
-            if file_envs:
-                run_kwargs["env_file"] = file_envs
             
             try:
                 container = docker_client.containers.run(container, **run_kwargs)
