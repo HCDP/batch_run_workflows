@@ -150,7 +150,7 @@ def run_containers(date, run_data, dry_run, container_ids, max_containers):
         for file in file_envs:
             environment.update(parse_env_file(file))
 
-        # Thread-safe check to see if we've already pulled this container image
+        # check to see if already pulled this container image
         with pull_lock:
             needs_pull = container_image not in pulled_images
             if needs_pull and not dry_run:
